@@ -59,7 +59,7 @@ async function init() {
                 //bucket name
                 Bucket: process.env.AWS_BUCKET_NAME,
                 //Path in the bucket where to store the file
-                Key: `__outputs/${PROJECT_ID}/${path.relative(distFolderPath, filePath)}`,
+                Key: `__outputs/${PROJECT_ID}/${file}`,
                 //actual content of the file
                 Body: fs.createReadStream(filePath),
                 //Dynamically get content type of file
