@@ -3,20 +3,24 @@ import path from "path";
 import fs from "fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import mime from "mime-types";
+import { fileURLToPath } from "url";
 
 const s3Client = new S3Client({
-    region: '',
+    region: process.env.AWS_REGION,
     credentials: {
-        accessKeyId: '',
-        secretAccessKey: '',
+        accessKeyId: process.env.AWS_ACCESS_KEY,
+        secretAccessKey: process.env.AWS_SECRET_KEY,
     }
 });
 
+// PROJECT_ID should be specified in the container execution command
 const PROJECT_ID = process.env.PROJECT_ID;
 
 async function init() {
     console.log("Executing script");
 
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
     // Go to output folder (all the source code will be present in "output" folder as specified in main.sh)
     const outDirPath = path.join(__dirname, "output");
 
@@ -43,15 +47,19 @@ async function init() {
         const distFolderContents = fs.readdirSync(distFolderPath, { recursive: true });
 
         // Loop over the file paths
-        for(const filePath of distFolderContents) {
+        for(const file of distFolderContents) {
+            const filePath = path.join(distFolderPath, file);
+
             // If path is of a directory continue. Since inside the dist folder there can be directories like "assets" which contains media files.
             if(fs.lstatSync(filePath).isDirectory()) continue;
 
+            console.log("uploading ", filePath);
+
             const command = new PutObjectCommand({
                 //bucket name
-                Bucket: '',
+                Bucket: process.env.AWS_BUCKET_NAME,
                 //Path in the bucket where to store the file
-                Key: `__outputs/${PROJECT_ID}/${filePath}`,
+                Key: `__outputs/${PROJECT_ID}/${path.relative(distFolderPath, filePath)}`,
                 //actual content of the file
                 Body: fs.createReadStream(filePath),
                 //Dynamically get content type of file
@@ -60,8 +68,11 @@ async function init() {
 
             //Send the command we created
             await s3Client.send(command);
+            console.log("uploaded ", filePath);
         }
 
         console.log("Done...");
     });
 }
+
+init();
