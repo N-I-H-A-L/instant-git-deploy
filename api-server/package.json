@@ -11,8 +11,12 @@
   "description": "",
   "dependencies": {
     "@aws-sdk/client-ecs": "^3.758.0",
+    "@prisma/client": "^6.4.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "random-word-slugs": "^0.1.7"
+  },
+  "devDependencies": {
+    "prisma": "^6.4.1"
   }
 }
