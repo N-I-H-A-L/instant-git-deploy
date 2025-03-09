@@ -36,8 +36,9 @@ app.post("/project", async (req, res) => {
   });
 
   const bodyValidation = bodyFormat.safeParse(req.body);
-  
-  if(bodyValidation.error) return res.status(400).json({error: bodyValidation.error});
+
+  if (bodyValidation.error)
+    return res.status(400).json({ error: bodyValidation.error });
 
   const { name, repoURL } = bodyValidation.data;
 
@@ -46,11 +47,11 @@ app.post("/project", async (req, res) => {
       name,
       repoURL,
       subDomain: generateSlug(),
-    }
+    },
   });
 
   return res.status(200).json(project);
-})
+});
 
 app.post("/deploy", async (req, res) => {
   const bodyFormat = z.object({
@@ -58,8 +59,9 @@ app.post("/deploy", async (req, res) => {
   });
 
   const bodyValidation = bodyFormat.safeParse(req.body);
-  
-  if(bodyValidation.error) return res.status(400).json({error: bodyValidation.error});
+
+  if (bodyValidation.error)
+    return res.status(400).json({ error: bodyValidation.error });
 
   //Get project id from body
   const { projectId } = bodyValidation.data;
@@ -67,23 +69,23 @@ app.post("/deploy", async (req, res) => {
   //get the project
   const project = await prisma.project.findUnique({
     where: {
-      id: projectId
-    }
+      id: projectId,
+    },
   });
 
-  if(!project) res.status(404).json({ error: "Project not found." });
+  if (!project) res.status(404).json({ error: "Project not found." });
 
   //Check if there is no running deployment
   const deployment = await prisma.deployment.create({
     data: {
       project: {
         connect: {
-          id: projectId
-        }
+          id: projectId,
+        },
       },
       status: "QUEUED",
-    }
-  })
+    },
+  });
 
   //Config of command
   const command = new RunTaskCommand({
@@ -118,7 +120,7 @@ app.post("/deploy", async (req, res) => {
             {
               name: "DEPLOYMENT_ID",
               value: deployment.id,
-            }
+            },
           ],
         },
       ],
