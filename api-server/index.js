@@ -4,6 +4,10 @@ import { ECSClient, RunTaskCommand } from "@aws-sdk/client-ecs";
 import dotenv from "dotenv";
 import { z } from "zod";
 import { PrismaClient } from "@prisma/client";
+import { createClient } from "@clickhouse/client";
+import { Kafka } from "kafkajs";
+import { v4 as uuidv4 } from "uuid";
+import cors from "cors";
 
 const app = express();
 const PORT = 9000;
@@ -26,8 +30,32 @@ const config = {
 };
 
 app.use(express.json());
+app.use(cors());
 
 const prisma = new PrismaClient({});
+const clickHouseClient = createClient({
+  host: "https://clickhouse-4ae734f-royalgamer2051-fc62.f.aivencloud.com",
+  database: "default",
+  username: process.env.CLICKHOUSE_USER,
+  password: process.env.CLICKHOUSE_PASS,
+});
+
+const kafka = new Kafka({
+  //clientId -> to uniquely identify our client who will listen, chose Deployment Id and not project Id since a project can have multiple deployemnts.
+  clientId: `api-server`,
+  brokers: [process.env.KAFKA_BROKER],
+  //URL of CA Certificate
+  ssl: {
+    ca: [fs.readFileSync(path.join(__dirname, "kafka.pem"), "utf-8")],
+  },
+  sasl: {
+    username: process.env.KAFKA_SASL_USER,
+    password: process.env.KAFKA_SASL_PASS,
+    mechanism: "plain",
+  },
+});
+
+const consumer = kafka.consumer({ groupId: "api-server-logs-consumer" });
 
 app.post("/project", async (req, res) => {
   const bodyFormat = z.object({
@@ -136,6 +164,42 @@ app.post("/deploy", async (req, res) => {
   });
 });
 
+async function initKafkaConsumer() {
+  await consumer.connect();
+  await consumer.subscribe({
+    topics: ["build-logs"]
+  });
+  await consumer.run({
+    autoCommit: false,
+    eachBatch: async function ({ batch, heartbeat, commitOffsetsIfNecessary, resolveOffset }) {
+      const messages = batch.messages;
+      console.log("Received ", messages.length, " messages...");
+      for(const message of messages) {
+        const { msg }  = message.value.toString();
+        const { PROJECT_ID, DEPLOYMENT_ID, log } = JSON.parse(msg);
+
+        const { query_id } = await clickHouseClient.insert({
+          table: "log_events",
+          values: [
+            {
+              event_id: uuidv4(),
+              deployment_id: DEPLOYMENT_ID,
+              log,
+            }
+          ],
+          format: "JSONEachRow"
+        });
+
+        console.log(query_id, " inserted.");
+        resolveOffset(message.offset);
+        await commitOffsetsIfNecessary(message.offset);
+        await heartbeat();
+      }
+    }
+  })
+}
+
+initKafkaConsumer();
 app.listen(PORT, () => {
   console.log(`API server is running on ${PORT}`);
 });
