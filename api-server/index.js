@@ -2,6 +2,8 @@ import express from "express";
 import { generateSlug } from "random-word-slugs";
 import { ECSClient, RunTaskCommand } from "@aws-sdk/client-ecs";
 import dotenv from "dotenv";
+import { z } from "zod";
+import { PrismaClient } from "@prisma/client";
 
 const app = express();
 const PORT = 9000;
@@ -25,12 +27,63 @@ const config = {
 
 app.use(express.json());
 
-app.post("/deploy", async (req, res) => {
-  //Get repo url from body
-  const { repoURL } = req.body;
+const prisma = new PrismaClient({});
 
-  //to generate unique project ID consisting of random words
-  const projectSlug = generateSlug();
+app.post("/project", async (req, res) => {
+  const bodyFormat = z.object({
+    name: z.string(),
+    repoURL: z.string(),
+  });
+
+  const bodyValidation = bodyFormat.safeParse(req.body);
+  
+  if(bodyValidation.error) return res.status(400).json({error: bodyValidation.error});
+
+  const { name, repoURL } = bodyValidation.data;
+
+  const project = await prisma.project.create({
+    data: {
+      name,
+      repoURL,
+      subDomain: generateSlug(),
+    }
+  });
+
+  return res.status(200).json(project);
+})
+
+app.post("/deploy", async (req, res) => {
+  const bodyFormat = z.object({
+    projectId: z.string(),
+  });
+
+  const bodyValidation = bodyFormat.safeParse(req.body);
+  
+  if(bodyValidation.error) return res.status(400).json({error: bodyValidation.error});
+
+  //Get project id from body
+  const { projectId } = bodyValidation.data;
+
+  //get the project
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    }
+  });
+
+  if(!project) res.status(404).json({ error: "Project not found." });
+
+  //Check if there is no running deployment
+  const deployment = await prisma.deployment.create({
+    data: {
+      project: {
+        connect: {
+          id: projectId
+        }
+      },
+      status: "QUEUED",
+    }
+  })
 
   //Config of command
   const command = new RunTaskCommand({
@@ -56,12 +109,16 @@ app.post("/deploy", async (req, res) => {
           environment: [
             {
               name: "GIT_REPO_URL",
-              value: repoURL,
+              value: project.repoURL,
             },
             {
               name: "PROJECT_ID",
-              value: projectSlug,
+              value: projectId,
             },
+            {
+              name: "DEPLOYMENT_ID",
+              value: deployment.id,
+            }
           ],
         },
       ],
