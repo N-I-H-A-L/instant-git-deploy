@@ -18,11 +18,15 @@ const s3Client = new S3Client({
 const PROJECT_ID = process.env.PROJECT_ID;
 const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const kafka = new Kafka({
   //clientId -> to uniquely identify our client who will listen, chose Deployment Id and not project Id since a project can have multiple deployemnts.
   clientId: `builder-${DEPLOYMENT_ID}`,
   brokers: [process.env.KAFKA_BROKER],
   //URL of CA Certificate
+  //CA (Certificate Authority) file is used to ensure secure communication with the Kafka server.
   ssl: {
     ca: [fs.readFileSync(path.join(__dirname, "kafka.pem"), "utf-8")],
   },
@@ -51,7 +55,7 @@ async function init() {
   await producer.connect();
 
   console.log("Executing script");
-  await publishLog("Build started...")
+  await publishLog("Build started...");
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -96,7 +100,7 @@ async function init() {
       if (fs.lstatSync(filePath).isDirectory()) continue;
 
       console.log("uploading ", filePath);
-      await publishLog("uploading ", filePath);
+      await publishLog(`uploading ${filePath}`);
 
       const command = new PutObjectCommand({
         //bucket name
@@ -112,7 +116,7 @@ async function init() {
       //Send the command we created
       await s3Client.send(command);
       console.log("uploaded ", filePath);
-      await publishLog("uploaded ", filePath);
+      await publishLog(`uploaded ${filePath}`);
     }
 
     console.log("Done...");
