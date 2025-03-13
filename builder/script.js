@@ -4,7 +4,6 @@ import fs from "fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import mime from "mime-types";
 import { fileURLToPath } from "url";
-import { Kafka } from "kafkajs";
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -21,34 +20,8 @@ const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const kafka = new Kafka({
-  //clientId -> to uniquely identify our client who will listen, chose Deployment Id and not project Id since a project can have multiple deployemnts.
-  clientId: `builder-${DEPLOYMENT_ID}`,
-  brokers: [process.env.KAFKA_BROKER],
-  //URL of CA Certificate
-  //CA (Certificate Authority) file is used to ensure secure communication with the Kafka server.
-  ssl: {
-    ca: [fs.readFileSync(path.join(__dirname, "kafka.pem"), "utf-8")],
-  },
-  sasl: {
-    username: process.env.KAFKA_SASL_USER,
-    password: process.env.KAFKA_SASL_PASS,
-    mechanism: "plain",
-  },
-});
-
-const producer = kafka.producer();
-
 async function publishLog(log) {
-  await producer.send({
-    topic: `build-logs`,
-    messages: [
-      {
-        key: "log",
-        value: JSON.stringify({ PROJECT_ID, DEPLOYMENT_ID, log }),
-      },
-    ],
-  });
+  
 }
 
 async function init() {

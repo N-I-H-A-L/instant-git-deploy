@@ -24,9 +24,8 @@ enum DeploymentStatus {
 model Project {
   id           String       @id @default(uuid())
   name         String
-  repoURL     String       @map("repo_url")
-  subDomain    String       @map("sub_domain")
-  customDomain String?      @map("custom_domain")
+  repoURL      String       @map("repo_url")
+  subDomain    String       @unique @map("sub_domain")
   Deployment   Deployment[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt

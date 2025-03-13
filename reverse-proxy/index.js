@@ -9,11 +9,11 @@ const BASE_PATH = "https://instant-git-deploy.s3.ap-south-1.amazonaws.com/__outp
 const proxy = httpProxy.createProxy();
 
 //Catch all requests
-app.use((req, res) => {
+app.use(async (req, res) => {
     //Get the hostname or URL of request
     const hostname = req.hostname;
 
-    //Get the first domain (project ID)
+    //Get the subdomain
     const subdomain = hostname.split('.')[0];
 
     //URL of HTML file in bucket
