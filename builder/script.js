@@ -13,20 +13,13 @@ const s3Client = new S3Client({
   },
 });
 
-// PROJECT_ID should be specified in the container execution command
-const PROJECT_ID = process.env.PROJECT_ID;
 const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function publishLog(log) {
   
 }
 
 async function init() {
-  await producer.connect();
-
   console.log("Executing script");
   await publishLog("Build started...");
 
@@ -79,7 +72,7 @@ async function init() {
         //bucket name
         Bucket: process.env.AWS_BUCKET_NAME,
         //Path in the bucket where to store the file
-        Key: `__outputs/${PROJECT_ID}/${file}`,
+        Key: `__outputs/${DEPLOYMENT_ID}/${file}`,
         //actual content of the file
         Body: fs.createReadStream(filePath),
         //Dynamically get content type of file

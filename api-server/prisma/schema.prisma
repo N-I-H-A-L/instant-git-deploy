@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,29 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Project {
+  id         String       @id @default(uuid())
+  name       String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  repoURL    String       @map("repo_url")
+  Deployment Deployment[]
+}
+
+model Deployment {
+  id        String           @id @default(uuid())
+  projectId String           @map("project_id")
+  status    DeploymentStatus @default(NOT_STARTED)
+  subdomain String           @unique
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  project   Project          @relation(fields: [projectId], references: [id])
+}
+
 enum DeploymentStatus {
   NOT_STARTED
   QUEUED
   IN_PROGRESS
   READY
   FAILED
-}
-
-model Project {
-  id           String       @id @default(uuid())
-  name         String
-  repoURL      String       @map("repo_url")
-  subDomain    String       @unique @map("sub_domain")
-  Deployment   Deployment[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-}
-
-model Deployment {
-  id        String           @id @default(uuid())
-  project   Project          @relation(fields: [projectId], references: [id])
-  projectId String           @map("project_id")
-  status    DeploymentStatus @default(NOT_STARTED)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
 }

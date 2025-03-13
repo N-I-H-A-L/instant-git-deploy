@@ -1,15 +1,9 @@
 import express from "express";
 import { ECSClient, RunTaskCommand } from "@aws-sdk/client-ecs";
 import dotenv from "dotenv";
-import { z, ZodSet } from "zod";
+import { z } from "zod";
 import { PrismaClient } from "@prisma/client";
-import { createClient } from "@clickhouse/client";
-import { Kafka } from "kafkajs";
-import { v4 as uuidv4 } from "uuid";
 import cors from "cors";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 
 const app = express();
 const PORT = 9000;
@@ -40,7 +34,6 @@ app.post("/project", async (req, res) => {
   const bodyFormat = z.object({
     name: z.string(),
     repoURL: z.string(),
-    subDomain: z.string(),
   });
 
   const bodyValidation = bodyFormat.safeParse(req.body);
@@ -48,12 +41,11 @@ app.post("/project", async (req, res) => {
   if (bodyValidation.error)
     return res.status(400).json({ error: bodyValidation.error });
 
-  const { name, repoURL, subDomain } = bodyValidation.data;
+  const { name, repoURL } = bodyValidation.data;
 
   const projectData = {
     name,
     repoURL,
-    subDomain,
   };
 
   try {
@@ -63,16 +55,14 @@ app.post("/project", async (req, res) => {
 
     return res.status(201).json(project);
   } catch (err) {
-    if (err.code === "P2002") {
-      return res.status(400).json({ error: "Subdomain is already taken" });
-    }
-    return res.status(500).json({ error: "Something went wrong" });
+    return res.status(500).json({ error: "Something went wrong", err });
   }
 });
 
 app.post("/deploy", async (req, res) => {
   const bodyFormat = z.object({
     projectId: z.string(),
+    subdomain: z.string(),
   });
 
   const bodyValidation = bodyFormat.safeParse(req.body);
@@ -81,7 +71,7 @@ app.post("/deploy", async (req, res) => {
     return res.status(400).json({ error: bodyValidation.error });
 
   //Get project id from body
-  const { projectId } = bodyValidation.data;
+  const { projectId, subdomain } = bodyValidation.data;
 
   //get the project
   const project = await prisma.project.findUnique({
@@ -92,17 +82,25 @@ app.post("/deploy", async (req, res) => {
 
   if (!project) res.status(404).json({ error: "Project not found." });
 
-  //Check if there is no running deployment
-  const deployment = await prisma.deployment.create({
-    data: {
-      project: {
-        connect: {
-          id: projectId,
+  let deployment;
+  try {
+    deployment = await prisma.deployment.create({
+      data: {
+        project: {
+          connect: {
+            id: projectId,
+          },
         },
+        subdomain,
+        status: "QUEUED",
       },
-      status: "QUEUED",
-    },
-  });
+    });
+  } catch (err) {
+    if (err.code === "P2002") {
+      return res.status(400).json({ error: "Subdomain is already taken" });
+    }
+    return res.status(500).json({ error: "Something went wrong", err });
+  }
 
   //Config of command
   const command = new RunTaskCommand({
@@ -151,8 +149,8 @@ app.post("/deploy", async (req, res) => {
     status: "queued",
     data: {
       projectId,
-      url: `http://${projectId}.localhost:8000`,
-      deploymentId: deployment.id,
+      url: `http://${subdomain}.localhost:8000`,
+      projectId,
     },
   });
 });
@@ -169,4 +167,3 @@ app.get("/logs/:deploymentId", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`API server is running on ${PORT}`);
 });
-ZodSet
