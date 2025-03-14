@@ -32,7 +32,6 @@ const prisma = new PrismaClient({});
 
 app.post("/project", async (req, res) => {
   const bodyFormat = z.object({
-    name: z.string(),
     repoURL: z.string(),
   });
 
@@ -41,10 +40,9 @@ app.post("/project", async (req, res) => {
   if (bodyValidation.error)
     return res.status(400).json({ error: bodyValidation.error });
 
-  const { name, repoURL } = bodyValidation.data;
+  const { repoURL } = bodyValidation.data;
 
   const projectData = {
-    name,
     repoURL,
   };
 
@@ -92,7 +90,6 @@ app.post("/deploy", async (req, res) => {
           },
         },
         subdomain,
-        status: "QUEUED",
       },
     });
   } catch (err) {

@@ -12,6 +12,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",
     "kafkajs": "^2.2.4",
-    "mime-types": "^2.1.35"
+    "mime-types": "^2.1.35",
+    "pg": "^8.14.0"
   }
 }
