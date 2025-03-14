@@ -2,14 +2,16 @@ import express from "express";
 import httpProxy from "http-proxy";
 import pg from "pg";
 import dotenv from "dotenv";
-
-const app = express();
-const PORT = 8000;
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
+const app = express();
+const PORT = 8000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const BASE_PATH = "https://instant-git-deploy.s3.ap-south-1.amazonaws.com/__outputs";
-
 const proxy = httpProxy.createProxy();
 
 const { Client } = pg;
@@ -39,9 +41,17 @@ app.use(async (req, res) => {
       deployment = result.rows[0];
     }
     else{
-        throw new Error("Deployment not found for the provided subdomain.");
+        return res.sendFile(path.join(__dirname, "not-found.html"));
     }
     
+    if(deployment.status === "FAILED"){
+        return res.sendFile(path.join(__dirname, "failed.html"));
+    }
+    else if(deployment.status === "QUEUED"){
+        return res.sendFile(path.join(__dirname, "queued.html"));
+    }
+
+
     //URL of HTML file in bucket
     const resolvesTo = `${BASE_PATH}/${deployment.id}`;
 
