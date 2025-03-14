@@ -4,9 +4,12 @@ import dotenv from "dotenv";
 import { z } from "zod";
 import { PrismaClient } from "@prisma/client";
 import cors from "cors";
+import Redis from "ioredis";
 
 const app = express();
 const PORT = 9000;
+const STATUS_CHANNEL = "status";
+const LOGS_CHANNEL = "logs";
 
 dotenv.config();
 
@@ -19,10 +22,39 @@ const ecsClient = new ECSClient({
   },
 });
 
+const redisClient = new Redis(process.env.REDIS);
+
+redisClient.subscribe("logs", "status", (err, count) => {
+  if (err) {
+    console.error("Failed to subscribe:", err);
+  } else {
+    console.log(`Subscribed to ${count} channel(s).`);
+  }
+});
+
+redisClient.on("message", async (channel, message) => {
+  if (channel === LOGS_CHANNEL) {
+    console.log(message);
+  } else {
+    try {
+      const parsedMessage = JSON.parse(message);
+      const { status, deploymentId } = parsedMessage;
+      await prisma.deployment.update({
+        where: { id: deploymentId },
+        data: { status },
+      });
+
+      console.log(`Project is ${status}`);
+    } catch (err) {
+      console.error("Error processing Redis message:", err);
+    }
+  }
+});
+
 //Cluster and Task Definition we created in AWS
 const config = {
   CLUSTER: "arn:aws:ecs:ap-south-1:761018889513:cluster/builder-git-deploy",
-  TASK: "arn:aws:ecs:ap-south-1:761018889513:task-definition/builder-git-deploy-task",
+  TASK: "arn:aws:ecs:ap-south-1:761018889513:task-definition/builder-git-deploy-task:4",
 };
 
 app.use(express.json());
@@ -150,15 +182,6 @@ app.post("/deploy", async (req, res) => {
       projectId,
     },
   });
-});
-
-app.get("/logs/:deploymentId", async (req, res) => {
-  const deploymentId = req.params.deploymentId;
-  const logs = {
-    log1: "pehla log",
-  };
-
-  return res.json({ logs });
 });
 
 app.listen(PORT, () => {

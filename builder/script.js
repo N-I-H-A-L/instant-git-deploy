@@ -4,6 +4,7 @@ import fs from "fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import mime from "mime-types";
 import { fileURLToPath } from "url";
+import Redis from "ioredis";
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -13,17 +14,30 @@ const s3Client = new S3Client({
   },
 });
 
+const redisClient = new Redis(process.env.REDIS);
+
 let builtSuccessfully = false;
 const DEPLOYMENT_ID = process.env.DEPLOYMENT_ID;
+const STATUS_CHANNEL = "status";
+const LOGS_CHANNEL = "logs";
 
-async function publishLog(log) {}
+async function publishMessage(message, channel) {
+  if (channel === STATUS_CHANNEL) {
+    const payload = {
+      status: message,
+      deploymentId: DEPLOYMENT_ID,
+    };
+
+    await redisClient.publish(channel, JSON.stringify(payload));
+  } else await redisClient.publish(channel, message);
+}
 
 async function handleBuildStatus() {
   try {
     if (builtSuccessfully) {
-      await publishLog("Build status: LIVE");
+      await publishMessage("LIVE", STATUS_CHANNEL);
     } else {
-      await publishLog("Build status: FAILED");
+      await publishMessage("FAILED", STATUS_CHANNEL);
     }
     console.log(
       `Build status updated to ${builtSuccessfully ? "LIVE" : "FAILED"}`
@@ -35,9 +49,8 @@ async function handleBuildStatus() {
 
 async function init() {
   console.log("Executing script");
-  await publishLog("Build started...");
-
-  await publishLog("Build status: QUEUED");
+  await publishMessage("Build started...", LOGS_CHANNEL);
+  await publishMessage("QUEUED", STATUS_CHANNEL);
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -51,33 +64,36 @@ async function init() {
   p.stdout.on("data", async (data) => {
     const getLog = data.toString();
     console.log(getLog);
-    await publishLog(getLog);
+    await publishMessage(getLog, LOGS_CHANNEL);
   });
 
   // Listen for errors
-  p.stdout.on("error", async (data) => {
+  p.stderr.on("error", async (data) => {
     const getLog = data.toString();
     console.log("Error: ", getLog);
-    await publishLog("Error: ", getLog);
+    await publishMessage(`Error: ${getLog}`, LOGS_CHANNEL);
   });
 
   p.on("error", async (err) => {
     console.log("Build process encountered an error: ", err);
-    await publishLog(`Build process encountered an error, ${err}`);
+    await publishMessage(
+      `Build process encountered an error, ${err}`,
+      LOGS_CHANNEL
+    );
 
     // Mark build as failed
     builtSuccessfully = false;
 
     // Ensure status update
     await handleBuildStatus();
-
+    await redisClient.quit();
     process.exit(1);
   });
 
   // When process gets finished
   p.on("close", async () => {
     console.log("Starting to upload...");
-    await publishLog("Starting to upload...");
+    await publishMessage("Starting to upload...", LOGS_CHANNEL);
 
     let errorOccurred = false;
 
@@ -98,7 +114,7 @@ async function init() {
         if (fs.lstatSync(filePath).isDirectory()) continue;
 
         console.log("uploading ", filePath);
-        await publishLog(`uploading ${filePath}`);
+        await publishMessage(`uploading ${filePath}`, LOGS_CHANNEL);
 
         const command = new PutObjectCommand({
           //bucket name
@@ -114,22 +130,28 @@ async function init() {
         //Send the command we created
         await s3Client.send(command);
         console.log("uploaded ", filePath);
-        await publishLog(`uploaded ${filePath}`);
+        await publishMessage(`uploaded ${filePath}`, LOGS_CHANNEL);
       }
     } catch (err) {
-      console.log("Error during building the application: ", err);
+      console.log("Error during S3 upload: ", err);
+      await publishMessage(
+        `Error during S3 upload: ${err.message}`,
+        LOGS_CHANNEL
+      );
       errorOccurred = true;
     }
 
     if (errorOccurred) {
       console.log("Build Failed!");
-      await publishLog("Build Failed!");
+      await publishMessage("Build Failed!", LOGS_CHANNEL);
     } else {
       console.log("Done...");
-      await publishLog("Done...");
+      await publishMessage("Done...", LOGS_CHANNEL);
       builtSuccessfully = true;
     }
+
     await handleBuildStatus();
+    await redisClient.quit();
 
     //To terminate the container
     process.exit(0);
