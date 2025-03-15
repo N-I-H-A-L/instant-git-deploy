@@ -103,6 +103,12 @@ app.post("/deploy", async (req, res) => {
   //Get project id from body
   const { projectId, subdomain } = bodyValidation.data;
 
+  if(subdomain.includes(".")){
+    res.status(400).json({
+      error: "Subdomain cannot contain dot(.) character.",
+    });
+  }
+
   //get the project
   const project = await prisma.project.findUnique({
     where: {

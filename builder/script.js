@@ -47,8 +47,54 @@ async function handleBuildStatus() {
   }
 }
 
+async function checkForBuildScriptLeaks(packageJsonPath) {
+  if (!fs.existsSync(packageJsonPath)) {
+    await publishMessage(
+      "No package.json found for the project. Aborting deployment...",
+      LOGS_CHANNEL
+    );
+    await handleBuildStatus();
+    process.exit(0);
+  }
+
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+  const buildScript = packageJson.scripts?.build;
+
+  if (!buildScript) {
+    await publishMessage(
+      "No build script found for the project. Aborting deployment...",
+      LOGS_CHANNEL
+    );
+    await handleBuildStatus();
+    process.exit(0);
+  }
+
+  const dangerousPatterns = [
+    /echo\s+\$[A-Z_]+/, // e.g., echo $API_KEY
+    /printenv/, // Print all env variables
+    /env/, // Running env command
+    /process\.env/, // Using process.env in script
+    /cat\s+\/proc\/self\/environ/, // Exposing container env
+    /rm\s+-rf\s+\/|sudo\s+rm\s+-rf/, // Deleting root files
+    /curl\s+\|/, // Pipe curl output (potential remote script execution)
+    /wget\s+\|/, // Pipe wget output
+    /eval\s*\(/, // Executing arbitrary code
+    /exec\s*\(/, // Running shell commands
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(buildScript)) {
+      await publishMessage(
+        `Potential security risk detected in build script: ${buildScript}. Aborting deployment...`,
+        LOGS_CHANNEL
+      );
+      await handleBuildStatus();
+      process.exit(0);
+    }
+  }
+}
+
 async function init() {
-  console.log("Executing script");
   await publishMessage("Build started...", LOGS_CHANNEL);
   await publishMessage("QUEUED", STATUS_CHANNEL);
 
@@ -57,13 +103,16 @@ async function init() {
   // Go to output folder (all the source code will be present in "output" folder as specified in main.sh)
   const outDirPath = path.join(__dirname, "output");
 
+  //Check for security threats in "npm run build" command.
+  const packageJsonPath = path.join(outDirPath, "package.json");
+  await checkForBuildScriptLeaks(packageJsonPath);
+
   // Go to output dir and install and build the files
   const p = exec(`cd ${outDirPath} && npm install && npm run build`);
 
   //Console log the output of the process
   p.stdout.on("data", async (data) => {
     const getLog = data.toString();
-    console.log(getLog);
     await publishMessage(getLog, LOGS_CHANNEL);
   });
 
@@ -92,7 +141,6 @@ async function init() {
 
   // When process gets finished
   p.on("close", async () => {
-    console.log("Starting to upload...");
     await publishMessage("Starting to upload...", LOGS_CHANNEL);
 
     let errorOccurred = false;
@@ -113,7 +161,6 @@ async function init() {
         // If path is of a directory continue. Since inside the dist folder there can be directories like "assets" which contains media files.
         if (fs.lstatSync(filePath).isDirectory()) continue;
 
-        console.log("uploading ", filePath);
         await publishMessage(`uploading ${filePath}`, LOGS_CHANNEL);
 
         const command = new PutObjectCommand({
@@ -129,7 +176,6 @@ async function init() {
 
         //Send the command we created
         await s3Client.send(command);
-        console.log("uploaded ", filePath);
         await publishMessage(`uploaded ${filePath}`, LOGS_CHANNEL);
       }
     } catch (err) {
