@@ -22,14 +22,15 @@ const STATUS_CHANNEL = "status";
 const LOGS_CHANNEL = "logs";
 
 async function publishMessage(message, channel) {
+  const actualChannel = `${channel}:${DEPLOYMENT_ID}`;
   if (channel === STATUS_CHANNEL) {
     const payload = {
       status: message,
       deploymentId: DEPLOYMENT_ID,
     };
 
-    await redisClient.publish(channel, JSON.stringify(payload));
-  } else await redisClient.publish(channel, message);
+    await redisClient.publish(actualChannel, JSON.stringify(payload));
+  } else await redisClient.publish(actualChannel, message);
 }
 
 async function handleBuildStatus() {

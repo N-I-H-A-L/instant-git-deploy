@@ -24,32 +24,26 @@ const ecsClient = new ECSClient({
 
 const redisClient = new Redis(process.env.REDIS);
 
-redisClient.subscribe("logs", "status", (err, count) => {
-  if (err) {
-    console.error("Failed to subscribe:", err);
-  } else {
-    console.log(`Subscribed to ${count} channel(s).`);
-  }
-});
+function getMessages(id) {
+  redisClient.on("message", async (channel, message) => {
+    if (channel === `${LOGS_CHANNEL}:${id}`) {
+      console.log(message);
+    } else {
+      try {
+        const parsedMessage = JSON.parse(message);
+        const { status, deploymentId } = parsedMessage;
+        await prisma.deployment.update({
+          where: { id: deploymentId },
+          data: { status },
+        });
 
-redisClient.on("message", async (channel, message) => {
-  if (channel === LOGS_CHANNEL) {
-    console.log(message);
-  } else {
-    try {
-      const parsedMessage = JSON.parse(message);
-      const { status, deploymentId } = parsedMessage;
-      await prisma.deployment.update({
-        where: { id: deploymentId },
-        data: { status },
-      });
-
-      console.log(`Project is ${status}`);
-    } catch (err) {
-      console.error("Error processing Redis message:", err);
+        console.log(`Project is ${status}`);
+      } catch (err) {
+        console.error("Error processing Redis message:", err);
+      }
     }
-  }
-});
+  });
+}
 
 //Cluster and Task Definition we created in AWS
 const config = {
@@ -103,7 +97,7 @@ app.post("/deploy", async (req, res) => {
   //Get project id from body
   const { projectId, subdomain } = bodyValidation.data;
 
-  if(subdomain.includes(".")){
+  if (subdomain.includes(".")) {
     res.status(400).json({
       error: "Subdomain cannot contain dot(.) character.",
     });
@@ -131,6 +125,22 @@ app.post("/deploy", async (req, res) => {
         status: "NOT_STARTED",
       },
     });
+
+    //At first add the listeners
+    getMessages(deployment.id);
+
+    //Then subscribe to channels
+    redisClient.subscribe(
+      `${LOGS_CHANNEL}:${deployment.id}`,
+      `${STATUS_CHANNEL}:${deployment.id}`,
+      (err, count) => {
+        if (err) {
+          console.error("Failed to subscribe:", err);
+        } else {
+          console.log(`Subscribed to ${count} channel(s).`);
+        }
+      }
+    );
   } catch (err) {
     if (err.code === "P2002") {
       return res.status(400).json({ error: "Subdomain is already taken" });
