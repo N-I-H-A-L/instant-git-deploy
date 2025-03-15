@@ -50,7 +50,9 @@ app.use(async (req, res) => {
     else if(deployment.status === "QUEUED"){
         return res.sendFile(path.join(__dirname, "queued.html"));
     }
-
+    else if(deployment.status === "NOT_STARTED"){
+        return res.sendFile(path.join(__dirname, "not-started.html"));
+    }
 
     //URL of HTML file in bucket
     const resolvesTo = `${BASE_PATH}/${deployment.id}`;

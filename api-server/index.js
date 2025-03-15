@@ -128,6 +128,7 @@ app.post("/deploy", async (req, res) => {
           },
         },
         subdomain,
+        status: "NOT_STARTED",
       },
     });
   } catch (err) {
