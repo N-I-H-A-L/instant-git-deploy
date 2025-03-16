@@ -1,13 +1,10 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { io } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Github } from "lucide-react";
 import { Fira_Code } from "next/font/google";
 import axios from "axios";
-
-const socket = io("http://localhost:9002");
 
 const firaCode = Fira_Code({ subsets: ["latin"] });
 
@@ -45,26 +42,8 @@ export default function Home() {
       const { projectSlug, url } = data.data;
       setProjectId(projectSlug);
       setDeployPreviewURL(url);
-
-      console.log(`Subscribing to logs:${projectSlug}`);
-      socket.emit("subscribe", `logs:${projectSlug}`);
     }
   }, [projectId, repoURL]);
-
-  const handleSocketIncommingMessage = useCallback((message: string) => {
-    console.log(`[Incomming Socket Message]:`, typeof message, message);
-    const { log } = JSON.parse(message);
-    setLogs((prev) => [...prev, log]);
-    logContainerRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  useEffect(() => {
-    socket.on("message", handleSocketIncommingMessage);
-
-    return () => {
-      socket.off("message", handleSocketIncommingMessage);
-    };
-  }, [handleSocketIncommingMessage]);
 
   return (
     <main className="flex justify-center items-center h-[100vh]">
